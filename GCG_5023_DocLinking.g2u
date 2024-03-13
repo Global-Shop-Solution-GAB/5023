@@ -1,0 +1,249 @@
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+f.Intrinsic.Control.Try
+v.Local.sError.Declare
+v.Local.sFile.Declare
+v.Local.bExists.Declare
+V.Local.sLine.Declare
+v.Local.iLength.Declare
+
+f.ODBC.Connection!COREDB.opencompanyconnection
+
+F.Intrinsic.String.Build("{0}\CUSTOM\5023",V.Caller.GlobalDir,V.Local.sFile)
+F.Intrinsic.File.DirExists(V.Local.sFile,V.Local.bExists)
+f.Intrinsic.Control.If(v.Local.bExists,=,False)
+	f.Intrinsic.File.CreateDir(v.Local.sFile)
+f.Intrinsic.Control.EndIf
+
+
+f.intrinsic.StringBuilder.Create("LOG")
+F.Intrinsic.StringBuilder.AppendLine("LOG","START OF PROCESS")
+
+
+'image files used for the order acknowledgement
+f.Intrinsic.Control.CallSub(getImageFiles)
+
+'diagram files used for assembly
+f.Intrinsic.Control.CallSub(getDiagramFiles)
+
+f.Intrinsic.StringBuilder.readlength("LOG",V.Local.iLength)
+f.Intrinsic.Control.If(v.Local.iLength,>,0)
+	f.Intrinsic.String.Build("{0}\LOG.TXT",V.Local.sFile,V.Local.sFile)
+	f.Intrinsic.StringBuilder.ToString("LOG",v.Local.sLine)
+	f.Intrinsic.File.String2File(v.Local.sFile,v.Local.sLine)
+	'f.Intrinsic.Task.ShellExec(0,"open",v.Local.sFile,"","",1)
+f.Intrinsic.Control.EndIf
+
+f.Intrinsic.StringBuilder.Dispose("LOG")
+
+f.Intrinsic.Control.CallSub(end)
+
+F.Intrinsic.Control.Exitsub
+
+f.Intrinsic.Control.catch
+f.Intrinsic.Control.CallSub(catching,"sub",v.Ambient.CurrentSubroutine,"errorno",v.Ambient.ErrorNumber,"errordesc",v.Ambient.ErrorDescription)
+f.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.catching.Start
+v.Local.sError.declare(string)
+F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5023_DocLinking.g2u",V.Ambient.NewLine,v.Args.sub,V.Args.errorno,V.args.errordesc,V.Local.sError)
+f.Intrinsic.UI.Msgbox(v.Local.sError)
+f.Intrinsic.Control.callsub(end)
+Program.Sub.catching.End
+
+Program.Sub.getImageFiles.Start
+f.Intrinsic.Control.Try
+v.Local.sError.Declare
+V.Local.sFile.Declare
+v.Local.sFileList.Declare
+V.Local.sSFile.Declare
+v.Local.sDfile.Declare
+v.Local.sPart.Declare
+v.Local.sExtension.Declare
+v.Local.sDest.Declare
+v.Local.sSource.Declare
+v.Local.iCount.Declare
+v.Local.iRec.Declare
+v.Local.sSql.Declare
+v.Local.iLinkID.Declare
+v.Local.iGroup.Declare
+v.Local.iRet.Declare
+v.Local.bExists.Declare
+v.Local.sLine.Declare
+
+v.Local.sSource.Set("\\192.168.2.7\CrystoramaFTP\Drop-Images\")
+
+F.Intrinsic.File.GetFileList(v.Local.sSource,v.Local.sFileList)
+
+f.Intrinsic.Control.If(v.Local.sFileList,<>,"")
+	
+	f.Intrinsic.String.Split(v.Local.sFileList,":",v.Local.sFileList)
+
+	f.Intrinsic.Control.For(v.Local.iCount,0,v.Local.sFileList.UBound,1)
+		v.Local.sDest.Set("\\192.168.2.7\CrystoramaFTP\Drop-Images\Attached\")
+		
+		f.Intrinsic.String.Split(v.Local.sFileList(v.Local.iCount),".",v.Local.sFile)
+		'the filename minus the extension is = the inventory part#
+		v.Local.sPart.Set(v.Local.sFile(0))
+		v.Local.sExtension.Set(v.Local.sFile(1))
+		'create the source and destination strings for moving the file
+		f.Intrinsic.String.Build("{0}.{1}",v.Local.sFile(0),v.Local.sFile(1),v.Local.sFile)
+		f.Intrinsic.String.Build("{0}{1}",v.local.sSource,V.Local.sFile,V.Local.sSFile)
+		F.Intrinsic.String.Build("{0}{1}",v.Local.sDest,v.Local.sFile,v.Local.sDfile)
+		f.Intrinsic.String.Build("select count(PART) from v_inventory_mstr where part = '{0}'",v.Local.sPart,v.Local.sSql)
+		f.ODBC.Connection!coredb.executeandreturn(v.Local.sSql,v.local.iRet)
+		
+		'if iRet > 0 then we have a link to write
+		f.Intrinsic.Control.If(v.Local.iRet,>,0)
+			f.Intrinsic.String.Build("update inventory_mst2 set text_info2 = '{0}' where part = '{0}'",v.Local.sPart,v.Local.sSql)
+			f.ODBC.Connection!coredb.execute(v.Local.sSql)
+			f.Global.DocumentControl.GetLinkID(v.Local.sPart,30,v.Local.iLinkID)
+			'check to see if the link already exists and write if not
+			f.Intrinsic.Control.If(v.Local.iLinkID,=,-1)
+				f.Global.DocumentControl.CreateReference(v.Local.sPart,30,v.Local.iLinkID)
+				f.Global.DocumentControl.AddDocument(v.Local.iLinkID,v.Local.sDfile,v.Local.sPart,2,v.Local.sExtension)
+			f.Intrinsic.Control.Else
+				f.Intrinsic.String.Build("select FILE_TYPE from ATG_DOC_ASSOC where LINK_ID = '{0}' AND FILE_TYPE = 'JPG'",V.Local.iLinkID,V.Local.sSql)
+				f.odbc.connection!coredb.OpenLocalRecordSetRO("rstTemp",v.local.ssql)
+				
+				F.Intrinsic.Control.If(V.ODBC.coredb!rstTemp.EOF,=,True)
+					f.Global.DocumentControl.AddDocument(v.Local.iLinkID,v.Local.sDfile,v.Local.sPart,1,v.Local.sExtension)
+				F.Intrinsic.Control.EndIf
+				
+				F.ODBC.coredb!rstTemp.Close
+			f.Intrinsic.Control.EndIf
+			'check to see if the file already exists in the destination, if yes, delete the old file, move the new file
+			'This was moved to outside the check because this does not account for the first iteration, which will always fail since iRet (the check for successful file move)is never set prior to the If
+			f.Intrinsic.File.Exists(v.Local.sDFile,v.Local.bExists)
+			f.Intrinsic.Control.If(v.Local.bExists,=,False)
+				f.Intrinsic.File.MoveFile(v.Local.sSFile,v.Local.sDfile,v.Local.iRet)
+			f.Intrinsic.Control.Else
+				f.Intrinsic.File.DeleteFile(v.Local.sDfile)
+				f.Intrinsic.File.MoveFile(v.Local.sSFile,v.Local.sDfile,v.Local.iRet)
+			f.Intrinsic.Control.EndIf
+		f.Intrinsic.Control.Else
+			f.Intrinsic.String.build("no records found for {0}, file {1} not linked",v.Local.sPart,v.Local.sFile,v.Local.sLine)
+			f.Intrinsic.stringbuilder.appendline("LOG",V.Local.sLine)
+			'move the file to another folder
+			f.Intrinsic.String.Replace(v.Local.sDest,"Attached","Failed_to_Attach",v.Local.sDest)
+			f.Intrinsic.String.Replace(v.Local.sDfile,"Attached","Failed_to_Attach",v.Local.sDfile)
+			f.Intrinsic.File.DirExists(v.Local.sDest,v.Local.bExists)
+			f.Intrinsic.Control.If(v.Local.bExists,=,True)
+				f.Intrinsic.File.MoveFile(v.Local.sSFile,v.Local.sDfile,v.Local.iRet)
+			f.Intrinsic.Control.Else
+				f.Intrinsic.File.CreateDir(v.Local.sDest)
+				f.Intrinsic.File.MoveFile(v.Local.sSFile,v.Local.sDfile,v.Local.iRet)
+			f.Intrinsic.Control.EndIf
+			f.Intrinsic.String.Build("file {0} was moved to {1}, review the file name",v.Local.sFile,v.Local.sDest,v.Local.sLine)
+			f.Intrinsic.stringbuilder.appendline("LOG",v.Local.sLine)
+		f.Intrinsic.Control.EndIf
+	f.Intrinsic.Control.Next(v.Local.iCount)
+f.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+f.Intrinsic.Control.catch
+f.Intrinsic.Control.CallSub(catching,"sub",v.Ambient.CurrentSubroutine,"errorno",v.Ambient.ErrorNumber,"errordesc",v.Ambient.ErrorDescription)
+f.Intrinsic.Control.EndTry
+Program.Sub.getImageFiles.End
+
+Program.Sub.end.Start
+f.ODBC.Connection!COREDB.Close
+f.Intrinsic.Control.End
+Program.Sub.end.End
+
+Program.Sub.getDiagramFiles.Start
+f.Intrinsic.Control.Try
+v.Local.sError.Declare
+V.Local.sFile.Declare
+v.Local.sFileList.Declare
+V.Local.sSFile.Declare
+v.Local.sDfile.Declare
+v.Local.sPart.Declare
+v.Local.sExtension.Declare
+v.Local.sDest.Declare
+v.Local.sSource.Declare
+v.Local.iCount.Declare
+v.Local.iRec.Declare
+v.Local.sSql.Declare
+v.Local.iLinkID.Declare
+v.Local.iGroup.Declare
+v.Local.iRet.Declare
+v.Local.bExists.Declare
+v.Local.sLine.Declare
+v.Local.sLink.Declare
+v.Local.sRet.Declare
+
+V.Local.sSource.Set("\\192.168.2.7\CrystoramaFTP\Drop-Diagrams\")
+F.Intrinsic.File.GetFileList(v.Local.sSource,v.Local.sFileList)
+
+f.Intrinsic.Control.If(v.Local.sFileList,<>,"")
+	
+	f.Intrinsic.String.Split(v.Local.sFileList,":",v.Local.sFileList)
+	
+	f.Intrinsic.Control.For(v.Local.iCount,0,v.Local.sFileList.UBound.1)
+		v.Local.sDest.Set("\\192.168.2.7\CrystoramaFTP\Drop-Diagrams\Attached\")
+
+		f.Intrinsic.String.Split(v.Local.sFileList(v.Local.iCount),".",v.Local.sFile)
+		'the filename minus the extension is = the inventory part#
+		v.Local.sPart.Set(v.Local.sFile(0))
+		v.Local.sExtension.Set(v.Local.sFile(1))
+		'create the source and destination strings for moving the file
+		f.Intrinsic.String.Build("{0}.{1}",v.Local.sFile(0),v.Local.sFile(1),v.Local.sFile)
+		f.Intrinsic.String.Build("{0}{1}",v.local.sSource,V.Local.sFile,V.Local.sSFile)
+		F.Intrinsic.String.Build("{0}{1}",v.Local.sDest,v.Local.sFile,v.Local.sDfile)
+		f.Intrinsic.String.Build("select count(PART) from v_inventory_mstr where part = '{0}'",v.Local.sPart,v.Local.sSql)
+		f.ODBC.Connection!coredb.executeandreturn(v.Local.sSql,v.local.iRet)
+		'if iRet > 0 then we have a link to write
+		f.Intrinsic.Control.If(v.Local.iRet,>,0)
+			f.Global.DocumentControl.GetLinkID(v.Local.sPart,30,v.Local.iLinkID)
+			'check to see if the link already exists and write if not
+			f.Intrinsic.Control.If(v.Local.iLinkID,=,-1)
+				f.Global.DocumentControl.CreateReference(v.Local.sPart,30,v.Local.iLinkID)
+				f.Global.DocumentControl.AddDocument(v.Local.iLinkID,v.Local.sDfile,v.Local.sPart,1,v.Local.sExtension)
+			f.Intrinsic.Control.Else
+				f.Intrinsic.String.Build("select FILE_TYPE from ATG_DOC_ASSOC where LINK_ID = '{0}' AND FILE_TYPE = 'PDF'",V.Local.iLinkID,V.Local.sSql)
+				f.odbc.connection!coredb.OpenLocalRecordSetRO("rstTemp",v.local.ssql)
+				
+				F.Intrinsic.Control.If(V.ODBC.coredb!rstTemp.EOF,=,True)
+					f.Global.DocumentControl.AddDocument(v.Local.iLinkID,v.Local.sDfile,v.Local.sPart,1,v.Local.sExtension)
+				F.Intrinsic.Control.EndIf
+				
+				F.ODBC.coredb!rstTemp.Close
+			f.Intrinsic.Control.EndIf
+			'check to see if the file already exists in the destination, if yes, delete the old file, move the new file
+			f.Intrinsic.File.Exists(v.Local.sDFile,v.Local.bExists)
+			f.Intrinsic.Control.If(v.Local.bExists,=,False)
+				f.Intrinsic.File.MoveFile(v.Local.sSFile,v.Local.sDfile,v.Local.iRet)
+			f.Intrinsic.Control.Else
+				f.Intrinsic.File.DeleteFile(v.Local.sDfile)
+				f.Intrinsic.File.MoveFile(v.Local.sSFile,v.Local.sDfile,v.Local.iRet)
+			f.Intrinsic.Control.EndIf
+		f.Intrinsic.Control.Else
+			f.Intrinsic.String.build("no records found for {0}, file {1} not linked",v.Local.sPart,v.Local.sFile,v.Local.sLine)
+			f.Intrinsic.stringbuilder.appendline("LOG",V.Local.sLine)
+			'move the file to another folder
+			f.Intrinsic.String.Replace(v.Local.sDest,"Attached","Failed_to_Attach",v.Local.sDest)
+			f.Intrinsic.String.Replace(v.Local.sDfile,"Attached","Failed_to_Attach",v.Local.sDfile)
+			f.Intrinsic.File.DirExists(v.Local.sDest,v.Local.bExists)
+			f.Intrinsic.Control.If(v.Local.bExists,=,True)
+				f.Intrinsic.File.MoveFile(v.Local.sSFile,v.Local.sDfile,v.Local.iRet)
+			f.Intrinsic.Control.Else
+				f.Intrinsic.File.CreateDir(v.Local.sDest)
+				f.Intrinsic.File.MoveFile(v.Local.sSFile,v.Local.sDfile,v.Local.iRet)
+			f.Intrinsic.Control.EndIf
+			f.Intrinsic.String.Build("file {0} was moved to {1}, review the file name",v.Local.sFile,v.Local.sDest,v.Local.sLine)
+			f.Intrinsic.stringbuilder.appendline("LOG",v.Local.sLine)
+		f.Intrinsic.Control.EndIf
+	f.Intrinsic.Control.Next(v.Local.iCount)
+f.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+f.Intrinsic.Control.catch
+f.Intrinsic.Control.CallSub(catching,"sub",v.Ambient.CurrentSubroutine,"errorno",v.Ambient.ErrorNumber,"errordesc",v.Ambient.ErrorDescription)
+f.Intrinsic.Control.EndTry
+Program.Sub.getDiagramFiles.End
